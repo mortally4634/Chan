@@ -1,51 +1,31 @@
 # =============================================================================
-#  Chan Linux  --  Makefile (Linux / WSL / macOS)
+#  Chan Linux  --  Makefile (thin wrapper over the Docker builder)
 # -----------------------------------------------------------------------------
-#  Targets:
-#    make            assemble init + build initramfs
-#    make run        boot in QEMU (serial console; exit with Ctrl-A X)
-#    make run-vga    boot in QEMU with a graphical window
-#    make kernel     copy the host's running kernel to ./bzImage (WSL/Linux)
-#    make clean      remove build artifacts
-#
-#  Requires: nasm, python3, qemu-system-x86_64. Plus a ./bzImage kernel image.
+#    make iso     build dist/chan.iso            (default)
+#    make test    build, then boot-test in QEMU
+#    make run     boot dist/chan.iso in QEMU (needs host qemu)
+#    make shell   open a shell in the builder container
+#    make clean   remove build artifacts
 # =============================================================================
+IMAGE  := chan-builder
+MOUNT  := -v "$(CURDIR)":/work
 
-NASM    ?= nasm
-PYTHON  ?= python3
-QEMU    ?= qemu-system-x86_64
+.PHONY: iso test run shell image clean
 
-BUILD   := build
-INIT    := $(BUILD)/init
-CPIO    := $(BUILD)/chan.cpio
-KERNEL  := bzImage
+iso: image
+	docker run --rm $(MOUNT) $(IMAGE) /work/tools/build-iso.sh
 
-.PHONY: all run run-vga kernel clean
+test: image
+	docker run --rm $(MOUNT) $(IMAGE) /work/tools/test-boot.sh
 
-all: $(CPIO)
+image:
+	docker build -t $(IMAGE) -f tools/Dockerfile .
 
-$(INIT): src/init.asm | $(BUILD)
-	$(NASM) -f bin $< -o $@
+run:
+	qemu-system-x86_64 -cdrom dist/chan.iso -m 512 -boot d
 
-$(CPIO): $(INIT) tools/mkinitramfs.py
-	$(PYTHON) tools/mkinitramfs.py $(INIT) $(CPIO)
-
-$(BUILD):
-	mkdir -p $(BUILD)
-
-run: all
-	@test -f $(KERNEL) || { echo "Missing ./$(KERNEL) -- run 'make kernel' or see README.md"; exit 1; }
-	$(QEMU) -kernel $(KERNEL) -initrd $(CPIO) -m 256 -append "console=ttyS0" -nographic
-
-run-vga: all
-	@test -f $(KERNEL) || { echo "Missing ./$(KERNEL) -- run 'make kernel' or see README.md"; exit 1; }
-	$(QEMU) -kernel $(KERNEL) -initrd $(CPIO) -m 256 -append "console=tty0"
-
-# Grab a kernel the easy way: reuse the one this Linux/WSL system already boots.
-kernel:
-	@k=$$(ls -1 /boot/vmlinuz-* 2>/dev/null | sort -V | tail -n1); \
-	if [ -n "$$k" ]; then cp "$$k" $(KERNEL) && echo "copied $$k -> ./$(KERNEL)"; \
-	else echo "No /boot/vmlinuz-* found. See README.md (Get a kernel)."; exit 1; fi
+shell: image
+	docker run --rm -it $(MOUNT) $(IMAGE)
 
 clean:
-	rm -rf $(BUILD) $(KERNEL)
+	rm -rf build iso dist

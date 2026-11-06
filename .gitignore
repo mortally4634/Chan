@@ -1,4 +1,7 @@
+# Build artifacts (all reproducible from source via the builder)
 build/
-bzImage
+iso/
+dist/
 *.cpio
 *.cpio.gz
+*.iso

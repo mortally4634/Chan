@@ -1,0 +1,13 @@
+four: the Chan Linux package manager.
+
+Named after the four leaves of the clover. It manages packages as files
+in a repository and tracks installed state on disk.
+
+  four list              show available packages
+  four installed         show installed packages
+  four install <pkg>     install a package
+  four remove <pkg>      remove an installed package
+  four info <pkg>        show a package's contents
+  four help              this help
+
+four is written in x86-64 assembly, like all of Chan's userland.

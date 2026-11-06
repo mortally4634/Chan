@@ -1,129 +1,140 @@
-# Chan Linux
+# Chan Linux 🍀
 
-A deliberately minimal Linux distribution whose **entire userland is x86-64 assembly**.
+A minimalist Linux distribution whose **entire userland is x86-64 assembly**.
 
-Chan boots the stock Linux kernel (like every Linux distro) and then hands control
-to a single hand-written assembly program as **PID 1 (`/init`)**. That program is
-all of Chan's userland: on boot it draws a **four-leaf-clover logo** beside a
-**fastfetch-style system panel** (with the *real* kernel version read via `uname`),
-then echoes your keystrokes back. No libc, no shell, no coreutils — just one ELF
-the kernel runs directly.
+Chan boots the stock Linux kernel — like every Linux distribution — and then hands
+control to a single hand-written assembly program as **PID 1 (`/init`)**. That one
+program *is* Chan's whole userland: it draws a four-leaf-clover logo beside a
+fastfetch-style panel (with the real kernel version, read via `uname`), then runs an
+interactive shell with a built-in package manager called **`four`**. No libc, no
+coreutils, no external shell — just one freestanding ELF the kernel executes directly.
 
 ```
    .-. .-.     root@chan
   (   V   )    ---------
    '-. .-'     OS:       Chan Linux x86_64
-   .-'V'-.     Kernel:   6.x.x-...
+   .-'V'-.     Kernel:   6.12.x-amd64
   (   ^   )    Arch:     x86_64
    '-' '-'     Init:     /init (PID 1, asm)
       |        Userland: x86-64 assembly
-      |        Shell:    none (echo loop)
+      |        Pkgmgr:   four
+
+chan> four install hello
+installed: hello
 ```
 
-```
-QEMU
-  └─ Linux kernel (bzImage)          ← stock, unchanged (C, like all distros)
-       └─ unpacks initramfs into RAM
-            └─ exec /init             ← src/init.asm, 100% x86-64 assembly
-                 • write() banner to the console
-                 • loop: read() a line  →  write() it back (echo)
-```
+## What "mainly ASM" means here
 
-## Why this counts as "mainly ASM"
+A Linux *distribution* is a kernel plus a userland; no distro rewrites the kernel
+(~30M lines of C). Chan's contribution — **every line of code that is Chan's own** —
+is assembly: the init/shell and the `four` package manager, in [`src/init.asm`](src/init.asm).
+It even emits its **own ELF executable header by hand**, so building the userland
+needs *no compiler and no linker* — just the NASM assembler.
 
-The Linux kernel is ~30 million lines of C and no distribution rewrites it — a
-"distro" is a kernel plus a userland. Chan's userland is a single assembly file,
-so *every line of code that is Chan's own is assembly*. It even emits its own
-ELF executable header by hand, so building needs **no compiler and no linker** —
-just the NASM assembler.
+> **Scope, honestly:** an all-assembly userland can't include a browser, a GUI, or a
+> C library, so Chan isn't a daily driver in the Ubuntu sense. What it *is*: a real,
+> bootable, interactive, package-managed OS on a standard ISO. That's the ceiling for
+> a hand-written assembly userland — and everything here genuinely boots and runs.
 
-## Repository layout
+## Quick start
 
-| Path                    | What it is                                                        |
-|-------------------------|-------------------------------------------------------------------|
-| `src/init.asm`          | The whole OS userland: ELF header + banner + echo loop (NASM).    |
-| `tools/mkinitramfs.py`  | Pure-Python `newc` cpio packer (builds the initramfs image).      |
-| `build.ps1` / `run.ps1` | Windows build & run scripts.                                      |
-| `Makefile`              | Linux / WSL / macOS build & run (`make`, `make run`).             |
-| `build/`                | Output: `init` (the ELF) and `chan.cpio` (the bootable image).    |
+You need **Docker Desktop** (the only host dependency — it builds the ISO
+reproducibly on any OS). To boot the result you need any VM (QEMU, VirtualBox,
+VMware, Hyper-V).
 
-## What you need
-
-1. **NASM** — the assembler (a single `.exe` on Windows).
-2. **Python 3** — to build the initramfs (no extra packages).
-3. **QEMU** — the VM to boot it in.
-4. A Linux **kernel image** named `bzImage` in this folder (see below).
-
-### Installing the tools on Windows (PowerShell)
-
+### Windows (PowerShell)
 ```powershell
-winget install NASM.NASM
-winget install Python.Python.3.12
-winget install SoftwareFreedomConservancy.QEMU
+.\build.ps1          # -> dist\chan.iso
+.\run.ps1            # boot it in a QEMU window
 ```
+`.\build.ps1 -Test` also boots it headlessly and asserts the shell + `four` work.
 
-Then open a **new** terminal so the tools are on your `PATH`.
-
-## Get a kernel (the one external piece)
-
-Chan supplies the userland; you supply a kernel. Pick whichever is easiest:
-
-- **Easiest if you have WSL / any Linux:** reuse the kernel your system already boots:
-  ```bash
-  cp "$(ls -1 /boot/vmlinuz-* | sort -V | tail -n1)" bzImage
-  ```
-  (or just run `make kernel`).
-
-- **Download a tiny prebuilt kernel (Alpine `virt`):** grab `vmlinuz-virt` from an
-  Alpine *netboot* release on <https://dl-cdn.alpinelinux.org/alpine/> and save it
-  here as `bzImage`. Any recent x86-64 `vmlinuz`/`bzImage` works.
-
-> A `vmlinuz`/`bzImage` is just a self-extracting Linux kernel; QEMU's `-kernel`
-> flag boots it directly, no bootloader needed.
-
-## Build and run
-
-### Windows
-
-```powershell
-.\build.ps1          # assemble + pack  ->  build\chan.cpio
-.\run.ps1            # boot (serial console in this terminal)
-```
-
-`.\run.ps1 -Window` opens a graphical VGA window instead.
-
-### Linux / WSL / macOS
-
+### Linux / macOS / WSL
 ```bash
-make                 # assemble + pack
-make run             # boot (serial console)
+./build.sh           # -> dist/chan.iso   (or: make iso)
+./run.sh             # boot it            (or: make run)
 ```
+`make test` runs the automated boot test.
 
-`make run-vga` opens a graphical window.
+Then attach `dist/chan.iso` to any VM (BIOS / "Generation 1" boot). The ISO is
+isohybrid, so `dd`-ing it to a USB stick boots on real BIOS hardware too.
 
 ## Using Chan
 
-You'll see the cyan **Chan Linux** banner, then a `chan>` prompt. Type anything,
-press **Enter**, and `/init` echoes the line back — proof that the assembly is
-doing the reading and writing.
+| Command | What it does |
+|---|---|
+| `help` | list shell commands |
+| `clear` | clear the screen |
+| `echo <text>` | print text |
+| `fetch` | redraw the clover system panel |
+| `uname` | show the real kernel release + arch |
+| `four <args>` | the package manager (below) |
+| `poweroff` / `reboot` | ACPI power-down / restart |
 
-To quit the serial-console VM: press **Ctrl-A**, release, then **X**.
-(Close the window to quit the `-Window` / `run-vga` variant.)
+### `four` — the package manager 🍀
 
-## How the magic works (two highlights)
+Named after the clover's four leaves. Packages live as files in a repository under
+`/var/four`, and `four` tracks installed state on disk — a real install/remove cycle.
 
-- **Self-hosting ELF.** `src/init.asm` starts with `org 0x400000` and writes the
-  64-byte ELF header and 56-byte program header as raw `db`/`dq` bytes. `nasm -f bin`
-  turns that into a valid static Linux executable with zero toolchain beyond NASM.
-- **`/dev/console` matters.** The initramfs includes a char-device node for
-  `/dev/console` (major 5, minor 1). The kernel opens it as `/init`'s fd 0/1/2; omit
-  it and the program runs but you'd see nothing. `tools/mkinitramfs.py` creates it.
+| Command | What it does |
+|---|---|
+| `four list` | available packages (reads the repo dir via `getdents64`) |
+| `four installed` | installed packages |
+| `four install <pkg>` | copy a package into the installed set |
+| `four remove <pkg>` | remove an installed package (`unlinkat`) |
+| `four info <pkg>` | print a package's contents |
+| `four help` | help |
 
-## Notes & limits
+Add your own package by dropping a file in [`rootfs/var/four/available/`](rootfs/var/four/available)
+and rebuilding.
 
-- `/init` never calls `exit` — if PID 1 exits, the kernel panics. The echo loop is
-  infinite by design.
-- The console TTY runs in cooked mode, so the kernel's line discipline also echoes
-  as you type; after Enter you'll see the line again from Chan's own `write()`.
-- This is a teaching-sized OS. Extending it (more commands, raw-mode input via an
-  `ioctl` termios call, mounting `/proc`) is all just more assembly in `init.asm`.
+## How it boots
+
+```
+QEMU / VirtualBox / real HW
+  └─ ISOLINUX (BIOS bootloader on the ISO)
+       └─ Linux kernel (bzImage)              stock, from Debian's linux-image
+            └─ unpacks initramfs into RAM     built by tools/mkinitramfs.py
+                 └─ exec /init                src/init.asm  (100% x86-64 asm)
+                      • uname() + draw clover/fetch panel
+                      • shell REPL: builtins + four
+```
+
+## Repository layout
+
+| Path | Role |
+|---|---|
+| [`src/init.asm`](src/init.asm) | The entire userland: ELF header + shell + `four` |
+| [`rootfs/`](rootfs) | The distro filesystem (etc, proc, `four`'s package repo) |
+| [`tools/mkinitramfs.py`](tools/mkinitramfs.py) | Pure-Python `newc` cpio packer |
+| [`tools/Dockerfile`](tools/Dockerfile) | Reproducible builder image (nasm, xorriso, isolinux, kernel) |
+| [`tools/build-iso.sh`](tools/build-iso.sh) | Assemble → pack → master ISO |
+| [`tools/test-boot.sh`](tools/test-boot.sh) | Automated QEMU boot test |
+| `build.ps1` / `run.ps1` / `build.sh` / `run.sh` / `Makefile` | Host wrappers |
+| `dist/chan.iso` | Output (git-ignored; rebuildable) |
+
+## Implementation highlights
+
+- **Self-hosting ELF.** `src/init.asm` writes the 64-byte ELF header and 56-byte
+  program header as raw bytes under `org 0x400000`, so `nasm -f bin` alone yields a
+  valid static Linux executable — no toolchain beyond the assembler.
+- **Raw syscalls only.** `read`, `write`, `uname`, `openat`, `getdents64`,
+  `unlinkat`, `mount`, `reboot` — invoked directly via the `syscall` instruction with
+  the x86-64 ABI (`rax`=number, `rdi/rsi/rdx/r10/r8/r9`=args). No libc wrappers.
+- **PID 1 discipline.** If PID 1 exits the kernel panics, so the shell loop is
+  infinite; only `poweroff`/`reboot` end the session, via the `reboot(2)` magic.
+- **`/dev/console` is mandatory.** The initramfs includes a char-device node
+  `(5,1)` so the kernel wires `/init`'s stdin/stdout to the console — without it the
+  program runs but you'd see nothing.
+
+## Extending it
+
+Everything grows in one place — `src/init.asm`. Natural next steps: more builtins
+(`cat`, `ls` via `getdents64`), making `four` fetch over a real network socket,
+splitting `four` into its own `/bin/four` ELF launched with `fork`+`execve`, or
+adding a UEFI boot path alongside ISOLINUX.
+
+## License
+
+MIT for Chan's own code (see [LICENSE](LICENSE)). The Linux kernel on the ISO is
+GPLv2, from kernel.org.

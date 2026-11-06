@@ -1,0 +1,4 @@
+hello: the traditional first package.
+Installing me with `four install hello` copies this file into
+/var/four/installed/. That is a real install: on-disk state the
+package database tracks. Remove me with `four remove hello`.

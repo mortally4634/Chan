@@ -1,0 +1,9 @@
+NAME="Chan Linux"
+PRETTY_NAME="Chan Linux (clover)"
+ID=chan
+VERSION="0.2"
+VERSION_CODENAME=clover
+ANSI_COLOR="1;32"
+HOME_URL="https://github.com/"
+BUG_REPORT_URL="https://github.com/"
+# Userland: 100% x86-64 assembly. Package manager: four.

@@ -1,37 +1,39 @@
 # =============================================================================
 #  Chan Linux  --  build (Windows / PowerShell)
 # -----------------------------------------------------------------------------
-#  Assembles the ASM init and packs the initramfs. Requires only NASM + Python.
-#     nasm   -> https://www.nasm.us/  (or: winget install NASM.NASM)
-#     python -> https://python.org/   (or: winget install Python.Python.3.12)
+#  Builds dist\chan.iso using the reproducible Docker builder image.
+#  Only Docker Desktop is required on the host.
 #
-#  Run:  .\build.ps1
+#     .\build.ps1          build the ISO
+#     .\build.ps1 -Test    build, then boot-test it under QEMU in the container
 # =============================================================================
+param([switch]$Test)
+
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
-$build = Join-Path $root "build"
-New-Item -ItemType Directory -Force -Path $build | Out-Null
+Set-Location $root
 
-function Need($name) {
-    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-        throw "'$name' not found on PATH. See README.md for install instructions."
-    }
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    throw "Docker not found. Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
 }
-Need nasm
-Need python
+try { docker info *> $null } catch { throw "Docker daemon is not running. Start Docker Desktop and retry." }
+if ($LASTEXITCODE -ne 0) { throw "Docker daemon is not running. Start Docker Desktop and retry." }
 
-$initAsm = Join-Path $root "src\init.asm"
-$initBin = Join-Path $build "init"
-$cpio    = Join-Path $build "chan.cpio"
+$mount = "$($root):/work"
 
-Write-Host "[1/2] assembling init.asm -> build/init" -ForegroundColor Cyan
-nasm -f bin $initAsm -o $initBin
-if ($LASTEXITCODE -ne 0) { throw "nasm failed" }
+Write-Host "==> building builder image (cached after first run)" -ForegroundColor Cyan
+docker build -t chan-builder -f tools/Dockerfile .
+if ($LASTEXITCODE -ne 0) { throw "docker build failed" }
 
-Write-Host "[2/2] packing initramfs -> build/chan.cpio" -ForegroundColor Cyan
-python (Join-Path $root "tools\mkinitramfs.py") $initBin $cpio
-if ($LASTEXITCODE -ne 0) { throw "mkinitramfs failed" }
+Write-Host "==> assembling userland + mastering ISO" -ForegroundColor Cyan
+docker run --rm -v $mount chan-builder /work/tools/build-iso.sh
+if ($LASTEXITCODE -ne 0) { throw "ISO build failed" }
+
+if ($Test) {
+    Write-Host "==> boot-testing under QEMU (software emulation; patience)" -ForegroundColor Cyan
+    docker run --rm -v $mount chan-builder /work/tools/test-boot.sh
+}
 
 Write-Host ""
-Write-Host "Build complete. Now run:  .\run.ps1" -ForegroundColor Green
-Write-Host "(You still need a kernel 'bzImage' in this folder -- see README.md.)" -ForegroundColor Yellow
+Write-Host "Done -> dist\chan.iso" -ForegroundColor Green
+Write-Host "Boot it:  .\run.ps1   (or attach dist\chan.iso to any VM)" -ForegroundColor Green
