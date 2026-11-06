@@ -1,0 +1,4 @@
+build/
+bzImage
+*.cpio
+*.cpio.gz
